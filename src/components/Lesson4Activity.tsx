@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { debateQuestions } from '../data';
-import { FileText, Users, Edit3, CheckCircle, RefreshCw, Award, AlertCircle, Heart, Check, Trash2, Printer } from 'lucide-react';
+import { FileText, Users, Edit3, CheckCircle, RefreshCw, Award, AlertCircle, Heart, Check, Trash2, Printer, Sparkles, Copy, BookOpen } from 'lucide-react';
 import { TextbookActivity, ReflectionAnswer } from '../types';
 
 interface Lesson4ActivityProps {
@@ -44,6 +44,90 @@ export default function Lesson4Activity({ completedKeys, toggleComplete, onActiv
   });
 
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+
+  // AI 소감문 생성기 관련 상태 변수들
+  const [isAiPanelOpen, setIsAiPanelOpen] = useState<boolean>(false);
+  const [aiKeywords, setAiKeywords] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generatedEssay, setGeneratedEssay] = useState<string>('');
+  const [generationError, setGenerationError] = useState<string>('');
+  const [copySuccess, setCopySuccess] = useState<boolean>(false);
+  const [applyFeedback, setApplyFeedback] = useState<string>('');
+
+  const handleTagClick = (tag: string) => {
+    const trimmed = aiKeywords.trim();
+    if (trimmed === '') {
+      setAiKeywords(tag);
+    } else {
+      const parts = trimmed.split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.includes(tag)) {
+        setAiKeywords(parts.filter(p => p !== tag).join(', '));
+      } else {
+        setAiKeywords([...parts, tag].join(', '));
+      }
+    }
+  };
+
+  const generateAiEssay = async () => {
+    if (!aiKeywords.trim()) {
+      setGenerationError('최소 한 개 이상의 키워드를 입력해 주세요.');
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationError('');
+    setGeneratedEssay('');
+
+    try {
+      const response = await fetch('/api/generate-essay', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ keywords: aiKeywords }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '소감문 생성에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      if (data.essay) {
+        setGeneratedEssay(data.essay);
+      } else {
+        throw new Error('응답에 소감문 본문이 비어있습니다.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setGenerationError(err.message || '소감문을 생성하는 중 에러가 발생했습니다.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const copyToClipboard = async () => {
+    if (!generatedEssay) return;
+    try {
+      await navigator.clipboard.writeText(generatedEssay);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
+  const applyToActivityDraft = (text: string) => {
+    handleInputChange('content', text);
+    setApplyFeedback('📖 공동 집필 본문에 생성된 소감문이 성공적으로 채워졌습니다! 평점 승인 상태가 실시간으로 재채점됩니다.');
+    setTimeout(() => setApplyFeedback(''), 5550);
+  };
+
+  const applyToQuestionThree = (text: string) => {
+    handleReflectionChange(3, text);
+    setApplyFeedback('✍️ 성찰 질문 3번에 생성된 소감문이 성공적으로 기입되었습니다!');
+    setTimeout(() => setApplyFeedback(''), 5550);
+  };
 
   // 로컬 스토리지 보존
   useEffect(() => {
@@ -231,6 +315,181 @@ export default function Lesson4Activity({ completedKeys, toggleComplete, onActiv
             </p>
           </div>
         </div>
+      </section>
+
+      {/* AI 평화 소감문 생성 보조기 */}
+      <section className="bg-[#121212] rounded-xl p-6 border border-editorial-accent/30 relative overflow-hidden print:hidden">
+        <div className="absolute right-0 top-0 w-48 h-48 bg-editorial-accent/10 rounded-full blur-3xl -z-10 animate-pulse" />
+        
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-editorial-accent/10 rounded-lg text-editorial-accent border border-editorial-accent/20 shrink-0">
+              <Sparkles className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-sm font-serif font-bold text-white flex items-center gap-1.5">
+                <span>AI 평화 성찰 소감문 도우미</span>
+                <span className="text-[9px] bg-editorial-accent/15 border border-editorial-accent/30 text-editorial-accent px-1.5 py-0.5 rounded uppercase font-mono font-bold tracking-wider">Gemini Powered</span>
+              </h3>
+              <p className="text-editorial-text-muted text-[11px] leading-relaxed mt-1">
+                주제어 키워드를 입력하면, 고문서적 교차 실증과 평화적 공존의 지각적 가치를 자연스럽게 엮어 전문적이고 유려한 성찰 소감문을 자동으로 생성해 줍니다.
+              </p>
+            </div>
+          </div>
+          <button
+            id="btn-toggle-ai-assistant"
+            onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
+            className="px-5 py-3 rounded bg-editorial-accent hover:bg-white text-black font-extrabold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer text-center sm:w-auto shrink-0 shadow-lg active:scale-95"
+          >
+            {isAiPanelOpen ? '도우미 접기' : '소감문 작성하기'}
+          </button>
+        </div>
+
+        {isAiPanelOpen && (
+          <div className="mt-6 pt-6 border-t border-editorial-border space-y-5 animate-fade-in">
+            {/* 키워드 태그 추천 피드 */}
+            <div className="space-y-2">
+              <span className="text-[9px] text-[#8e8e8e] font-bold block uppercase tracking-widest font-mono">성찰 핵심 추천 키워드 (클릭하여 추가/제거)</span>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  '세종실록지리지',
+                  '태정관 지령',
+                  '기죽도약도',
+                  '지리적 근접성',
+                  '미래인도적 상생',
+                  '평화 공동체 수용',
+                  '안용복 수호정신',
+                  '역사적 정의 실현'
+                ].map((tag) => {
+                  const isSelected = aiKeywords.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => handleTagClick(tag)}
+                      className={`text-[10px] px-3 py-1.5 rounded transition-all duration-200 cursor-pointer ${
+                        isSelected
+                          ? 'bg-editorial-accent text-black font-extrabold shadow-md border border-editorial-accent'
+                          : 'bg-[#181818] text-[#999] hover:text-white border border-editorial-border hover:border-neutral-500'
+                      }`}
+                    >
+                      #{tag}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 본 기입란 */}
+            <div className="space-y-2">
+              <label className="text-[9px] text-[#8e8e8e] font-bold tracking-widest block uppercase font-mono">소감문 생성 키워드 기입 (쉼표로 구분)</label>
+              <div className="flex gap-3 flex-col sm:flex-row">
+                <input
+                  type="text"
+                  value={aiKeywords}
+                  onChange={(e) => setAiKeywords(e.target.value)}
+                  placeholder="예: 세종실록지리지, 태정관 지령, 미래지향 협력, 평화 공동체"
+                  className="flex-grow bg-[#151515] border border-editorial-border focus:border-editorial-accent p-3.5 rounded text-xs text-white focus:outline-none transition font-sans shadow-inner placeholder-neutral-700"
+                />
+                <button
+                  id="btn-generate-ai-action"
+                  onClick={generateAiEssay}
+                  disabled={isGenerating}
+                  className="px-6 py-3.5 bg-editorial-accent hover:bg-white text-black font-extrabold text-xs uppercase tracking-wider rounded transition flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer shrink-0 shadow-lg active:scale-95"
+                >
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>소감문 생성 중...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>소감문 자동 작성 및 생성하기</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              {generationError && (
+                <p className="text-rose-400 text-xs flex items-center gap-1.5 mt-2 font-mono">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{generationError}</span>
+                </p>
+              )}
+            </div>
+
+            {/* 로딩 인디케이터 - 지능형 진행 피드백 */}
+            {isGenerating && (
+              <div className="bg-[#181818] border border-editorial-border rounded-xl p-6 space-y-4 animate-pulse text-center">
+                <RefreshCw className="w-7 h-7 animate-spin text-editorial-accent mx-auto" />
+                <div className="space-y-1.5">
+                  <p className="text-xs font-bold text-white">가상 인공지능 역사 평사관이 고증과 상생 문장을 교차 심의 중입니다...</p>
+                  <p className="text-[10px] text-editorial-text-muted max-w-lg mx-auto leading-relaxed">
+                    『세종실록지리지』 지리 사실과 『태정관 지령』의 법리를 상호 대조하며, 지나친 민족 감정 비하 문구를 배제하여 유려한 칭론 소감문으로 문단을 빌딩하고 있습니다. (3~5초 소요)
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 피드백 전용 임시 안내배너 */}
+            {applyFeedback && (
+              <div className="p-3.5 bg-emerald-950/20 text-emerald-400 border border-emerald-900/30 rounded text-xs flex items-center gap-2 font-sans animate-fade-in text-center sm:text-left justify-center sm:justify-start">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>{applyFeedback}</span>
+              </div>
+            )}
+
+            {/* 생성 성공 물품 표시 */}
+            {generatedEssay && (
+              <div className="space-y-5 animate-fade-in text-editorial-text-main">
+                <div className="bg-[#161616] border border-editorial-accent/20 rounded-xl p-6 relative shadow-inner">
+                  <div className="absolute right-4 top-4 border border-editorial-accent/20 rounded text-[9px] uppercase font-mono px-2 py-0.5 text-editorial-accent tracking-wider font-bold bg-[#1d1d1d]">
+                    STUDENT ESSAY DRAFT
+                  </div>
+                  <h4 className="text-xs font-serif font-bold text-editorial-accent tracking-tight mb-4 flex items-center space-x-1">
+                    <BookOpen className="w-4 h-4 shrink-0" />
+                    <span>생성된 평화 소감문 성안 초고</span>
+                  </h4>
+                  
+                  {/* Parchment scroll style content */}
+                  <div className="text-xs text-neutral-300 font-serif font-normal space-y-3.5 whitespace-pre-wrap select-text selection:bg-editorial-accent selection:text-black leading-relaxed">
+                    {generatedEssay}
+                  </div>
+                </div>
+
+                {/* 적용 버튼 트리오 */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={copyToClipboard}
+                    className="flex items-center justify-center space-x-2 px-4 py-3 bg-[#181818] hover:bg-[#222222] text-white border border-editorial-border rounded text-xs font-bold transition cursor-pointer active:scale-95"
+                  >
+                    <Copy className="w-4 h-4 text-editorial-accent" />
+                    <span>{copySuccess ? '📋 복사 승인 완료!' : '📋 클립보드 복사'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => applyToActivityDraft(generatedEssay)}
+                    className="flex items-center justify-center space-x-2 px-4 py-3 bg-[#181818] hover:bg-neutral-900 text-white border border-editorial-accent/30 rounded text-xs font-bold transition cursor-pointer active:scale-95"
+                  >
+                    <Edit3 className="w-4 h-4 text-editorial-accent animate-pulse" />
+                    <span>📖 공동 집필 본문에 즉시 기입</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => applyToQuestionThree(generatedEssay)}
+                    className="flex items-center justify-center space-x-2 px-4 py-3 bg-[#181818] hover:bg-neutral-900 text-white border border-editorial-accent/30 rounded text-xs font-bold transition cursor-pointer active:scale-95"
+                  >
+                    <FileText className="w-4 h-4 text-editorial-accent" />
+                    <span>✍️ 개별 성찰 질문 3번에 자동 기입</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* 활동지 폼 레이아웃 */}

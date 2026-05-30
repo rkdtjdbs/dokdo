@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Compass, FileText, Globe, Landmark, Award } from 'lucide-react';
+import { BookOpen, Compass, FileText, Globe, Landmark, Award, Sparkles } from 'lucide-react';
 
 interface NavigationProps {
   currentTab: number;
@@ -13,6 +13,7 @@ export default function Navigation({ currentTab, setCurrentTab, progressPercent 
     { id: 2, label: '2차시: 사료와 고지도', icon: Landmark, sub: '한·일 고문서 대조 분석' },
     { id: 3, label: '3차시: 현대 갈등과 공백', icon: Globe, sub: '조약, 평화선, 수비대' },
     { id: 4, label: '수업 활동지 작성', icon: FileText, sub: '공동 교과서 집필하기' },
+    { id: 5, label: '평화 소감문 작성란', icon: Sparkles, sub: 'AI 기반 성찰 소감문 전용' },
   ];
 
   return (
@@ -55,7 +56,7 @@ export default function Navigation({ currentTab, setCurrentTab, progressPercent 
             <div className="flex items-center space-x-1.5 bg-neutral-900/50 px-2.5 py-1 rounded border border-editorial-border-light">
               <Award className="w-4 h-4 text-editorial-accent" />
               <span className="text-[11px] font-semibold text-neutral-300">
-                {progressPercent === 100 ? '학습 완료' : `${Math.floor(progressPercent / 25)}/4 완료`}
+                {progressPercent === 100 ? '학습 완료' : `${Math.round(progressPercent / 20)}/5 완료`}
               </span>
             </div>
           </div>

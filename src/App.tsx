@@ -9,6 +9,7 @@ import Lesson1Geographics from './components/Lesson1Geographics';
 import Lesson2History from './components/Lesson2History';
 import Lesson3ModernConf from './components/Lesson3ModernConf';
 import Lesson4Activity from './components/Lesson4Activity';
+import ReflectiveEssayWriter from './components/ReflectiveEssayWriter';
 import { BookOpen, Award, Sparkles, Check, ChevronRight, HelpCircle, Heart } from 'lucide-react';
 
 export default function App() {
@@ -32,7 +33,7 @@ export default function App() {
 
   // 완료된 차시에 기반하여 진도율 계산
   useEffect(() => {
-    const totalLessons = 4;
+    const totalLessons = 5;
     const completedCount = completedKeys.length;
     const calcPercent = Math.min(100, Math.round((completedCount / totalLessons) * 100));
     setProgressPercent(calcPercent);
@@ -105,6 +106,13 @@ export default function App() {
             onActivitySubmit={handleActivitySubmit}
           />
         );
+      case 5:
+        return (
+          <ReflectiveEssayWriter 
+            completedKeys={completedKeys} 
+            toggleComplete={toggleComplete} 
+          />
+        );
       default:
         return null;
     }
@@ -172,7 +180,7 @@ export default function App() {
               </button>
             )}
             
-            {currentTab < 4 ? (
+            {currentTab < 5 ? (
               <button
                 id="btn-next-lesson"
                 onClick={() => setCurrentTab(currentTab + 1)}
