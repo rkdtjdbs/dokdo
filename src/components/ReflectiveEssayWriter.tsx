@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, FileText, Copy, Printer, Trash2, Check, AlertCircle, RefreshCw, Layers, Quote } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles, FileText, Copy, Printer, Trash2, Check, AlertCircle, RefreshCw, Layers, Quote, Upload, FileSpreadsheet, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { generateLocalHistoricalEssay } from '../utils/essayGenerator';
 
 interface ReflectiveEssayWriterProps {
   completedKeys: string[];
@@ -11,8 +13,12 @@ export default function ReflectiveEssayWriter({ completedKeys, toggleComplete }:
   const [essayContent, setEssayContent] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string>('');
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [isFallbackMode, setIsFallbackMode] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Suggested keywords to make interaction seamless
   const PRESET_KEYWORDS = [
@@ -56,6 +62,110 @@ export default function ReflectiveEssayWriter({ completedKeys, toggleComplete }:
     }
   };
 
+  const downloadSampleTemplate = () => {
+    const csvContent = "\ufeff키워드목록,주석\n세종실록지리지,조선 초기 관찬 지리지\n태정관 지령,일본 메이지 정부 공식 지령문\n미래지향 평화,한일 상생과 상호 우호\n안용복 수호정신,조선 어민의 호국 의지\n독도 평화의 바다,해양 주권과 생태 보전";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "dokdo_keywords_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const parseSpreadsheet = (file: File) => {
+    const reader = new FileReader();
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    
+    setErrorMsg('');
+    setUploadSuccessMsg('');
+
+    reader.onload = (event) => {
+      try {
+        const data = event.target?.result;
+        if (!data) return;
+
+        let detectedKeywords: string[] = [];
+
+        if (extension === 'csv' || extension === 'txt') {
+          const text = new TextDecoder('utf-8').decode(data as ArrayBuffer);
+          detectedKeywords = text
+            .split(/[\n,;\t\r]/)
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && s.length < 50);
+        } else {
+          const workbook = XLSX.read(data, { type: 'array' });
+          workbook.SheetNames.forEach((sheetName) => {
+            const worksheet = workbook.Sheets[sheetName];
+            const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            json.forEach(row => {
+              if (Array.isArray(row)) {
+                row.forEach(cell => {
+                  if (cell !== null && cell !== undefined) {
+                    const valStr = String(cell).trim();
+                    if (valStr && valStr.length > 0 && valStr.length < 50) {
+                      detectedKeywords.push(valStr);
+                    }
+                  }
+                });
+              }
+            });
+          });
+        }
+
+        const uniqueKeywords = Array.from(new Set(detectedKeywords))
+          .filter(k => !/^(true|false|undefined|null|object|id|키워드목록|주석)$/i.test(k));
+
+        if (uniqueKeywords.length === 0) {
+          setErrorMsg('업로드한 파일이나 시트 셀에서 유효한 키워드 텍스트를 발견하지 못했습니다.');
+          return;
+        }
+
+        // Merge with existing keywords without duplicates
+        const currentParts = keywords.split(',').map(s => s.trim()).filter(Boolean);
+        const merged = Array.from(new Set([...currentParts, ...uniqueKeywords])).join(', ');
+        
+        setKeywords(merged);
+        localStorage.setItem('dokdo_reflective_keywords', merged);
+        setUploadSuccessMsg(`🎉 [${file.name}] 문서의 셀로부터 ${uniqueKeywords.length}개의 키워드를 성공적으로 로드하여 기입란에 결합했습니다!`);
+        setTimeout(() => setUploadSuccessMsg(''), 6000);
+      } catch (err: any) {
+        console.error("Spreadsheet parsing failed:", err);
+        setErrorMsg('스프레드시트 분석 중 에러가 발생했습니다. 성찰 전용 UTF-8 CSV나 현대 규격 .xlsx 파일 업로드를 추천합니다. (한셀의 경우 엑셀 형식 .xlsx로 다운로드 후 업로드하십시오)');
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    parseSpreadsheet(file);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      parseSpreadsheet(file);
+    }
+  };
+
   const handleGenerateEssay = async () => {
     if (!keywords.trim()) {
       setErrorMsg('소감문을 생성할 키워드를 1개 이상 입력해 주세요.');
@@ -66,6 +176,7 @@ export default function ReflectiveEssayWriter({ completedKeys, toggleComplete }:
     setErrorMsg('');
     setEssayContent('');
     setIsSaved(false);
+    setIsFallbackMode(false);
 
     try {
       const response = await fetch('/api/generate-essay', {
@@ -95,10 +206,29 @@ export default function ReflectiveEssayWriter({ completedKeys, toggleComplete }:
         throw new Error('생성된 소감문 내용이 비어 있습니다.');
       }
     } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || '소감문 생성 중 예기치 못한 에러가 발생했습니다.');
+      console.warn("API Error, falling back to local essay generator library:", err);
+      // Run fallback generation
+      setTimeout(() => {
+        const localEssay = generateLocalHistoricalEssay(keywords);
+        setEssayContent(localEssay);
+        setIsFallbackMode(true);
+        localStorage.setItem('dokdo_reflective_essay', localEssay);
+        localStorage.setItem('dokdo_reflective_keywords', keywords);
+        
+        // Mark lesson/reflection task as complete
+        if (!completedKeys.includes('reflection')) {
+          toggleComplete('reflection');
+        }
+        setIsGenerating(false);
+      }, 1000); // 1s visual simulation for realistic typing build feel
     } finally {
-      setIsGenerating(false);
+      // If we did not use fallback, stop loading immediately
+      setTimeout(() => {
+        setIsGenerating(prev => {
+          if (prev && !isFallbackMode) return false;
+          return prev;
+        });
+      }, 100);
     }
   };
 
@@ -224,6 +354,60 @@ export default function ReflectiveEssayWriter({ completedKeys, toggleComplete }:
               />
             </div>
 
+            {/* 엑셀 및 한셀 업로드 영역 (더셀에서 업로드 지원) */}
+            <div className="space-y-2 border-t border-editorial-border pt-4">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] text-editorial-text-muted font-bold tracking-widest block uppercase font-mono">
+                  📊 더셀(한셀/엑셀) • CSV 키워드 업로드
+                </label>
+                <button
+                  type="button"
+                  onClick={downloadSampleTemplate}
+                  className="text-[9px] text-[#8e8e8e] hover:text-editorial-accent flex items-center gap-1 font-mono transition cursor-pointer"
+                >
+                  <Download className="w-3 h-3 text-editorial-accent" />
+                  <span>샘플 규격 받기</span>
+                </button>
+              </div>
+
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-lg p-5 text-center transition-all duration-300 cursor-pointer ${
+                  isDragging
+                    ? 'border-editorial-accent bg-editorial-accent/10 shadow-lg'
+                    : 'border-editorial-border bg-[#181818] hover:border-neutral-500'
+                }`}
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept=".xlsx,.xls,.csv,.cell"
+                  className="hidden"
+                />
+                
+                <div className="flex flex-col items-center space-y-2">
+                  <FileSpreadsheet className={`w-8 h-8 ${isDragging ? 'text-editorial-accent animate-bounce' : 'text-editorial-accent/70'}`} />
+                  <p className="text-[11px] text-[#ccc]">
+                    {isDragging ? '스프레드시트를 여기에 놓으세요!' : '여기에 더셀, 엑셀, 한셀, CSV 파일을 끌어놓으세요'}
+                  </p>
+                  <p className="text-[9px] text-neutral-500">
+                    기안 엑셀파일(.xlsx, .xls) 및 한셀(.cell), CSV 자동 지원
+                  </p>
+                </div>
+              </div>
+
+              {uploadSuccessMsg && (
+                <div className="p-3 bg-emerald-950/20 text-emerald-400 border border-emerald-900/45 rounded text-[10.1px] font-sans flex items-center gap-2 animate-fade-in leading-relaxed">
+                  <Check className="w-4 h-4 shrink-0" />
+                  <span>{uploadSuccessMsg}</span>
+                </div>
+              )}
+            </div>
+
             {/* 생성 액션 버튼 */}
             <div>
               <button
@@ -302,6 +486,12 @@ export default function ReflectiveEssayWriter({ completedKeys, toggleComplete }:
               ) : essayContent ? (
                 // 실제 생성된 소감문 본문
                 <div className="space-y-4 animate-fade-in select-text selection:bg-editorial-accent selection:text-black text-editorial-text-main print:text-black">
+                  {isFallbackMode && (
+                    <div className="p-3.5 bg-[#181818] border border-editorial-accent/30 rounded text-neutral-300 text-[10.5px] leading-relaxed flex items-center gap-2 mb-4">
+                      <Sparkles className="w-4 h-4 text-editorial-accent shrink-0 animate-pulse" />
+                      <span>💡 <strong>로컬 지능 고증 성찰 엔진이 소감문을 임시 완성했습니다.</strong> 현재 브라우저 샌드박스에서 실시간 Gemini AI API 연결이 성립되지 않았으므로 사전에 숙성된 고품격 인문 소감문으로 매끄럽고 안정적이게 자동 기입되었습니다. Gemini AI를 활용하려면 우측의 <strong>Settings &gt; Secrets</strong>에 API 키가 올바르게 바인딩되었는지 점검바랍니다.</span>
+                    </div>
+                  )}
                   <div className="text-xs sm:text-sm font-serif leading-relaxed whitespace-pre-wrap font-light text-neutral-200 print:text-black">
                     {essayContent}
                   </div>

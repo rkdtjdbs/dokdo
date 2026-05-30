@@ -2,6 +2,16 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import fs from "fs";
+
+function logDebug(message: string) {
+  try {
+    const timestamp = new Date().toISOString();
+    fs.appendFileSync(path.join(process.cwd(), "api-debug.log"), `[${timestamp}] ${message}\n`);
+  } catch (err) {
+    console.error("Failed to write to debug log:", err);
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -11,20 +21,25 @@ async function startServer() {
 
   // API path for generating essay reflection
   app.post("/api/generate-essay", async (req, res) => {
+    logDebug(`Received POST request of keywords: ${JSON.stringify(req.body)}`);
     try {
       const { keywords } = req.body;
       if (!keywords || typeof keywords !== "string" || !keywords.trim()) {
+        logDebug("Error: No keywords provided");
         res.status(400).json({ error: "키워드를 입력해주세요." });
         return;
       }
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
+        logDebug("Error: GEMINI_API_KEY is not defined in process.env");
         res.status(500).json({ 
           error: "GEMINI_API_KEY가 설정되지 않았습니다. AI Studio Secrets 패널에서 API 키를 설정해주세요." 
         });
         return;
       }
+
+      logDebug("Success: apiKey detected, length of key: " + apiKey.length);
 
       // Lazy load GoogleGenAI as recommended for API Key Safety
       const ai = new GoogleGenAI({
@@ -48,6 +63,7 @@ async function startServer() {
 4. 독자(미래 세대 학생)에게 평화와 인류 보편의 진실에 대한 울림을 줄 수 있게 작성해 주세요.
 5. 마크다운(Markdown) 문법을 유려하게 활용하여 단락을 정교하게 구분하고 가독성을 극대하게 높여 반환해 주세요.`;
 
+      logDebug("Calling Gemini model: gemini-3.5-flash with prompt");
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
         contents: prompt,
@@ -58,8 +74,10 @@ async function startServer() {
       });
 
       const essay = response.text;
+      logDebug(`Successfully generated essay of length: ${essay ? essay.length : 0}`);
       res.json({ essay });
     } catch (error: any) {
+      logDebug(`Gemini API Error details: ${error?.stack || error?.message || error}`);
       console.error("Gemini API Error Error:", error);
       res.status(500).json({ error: error.message || "소감문 생성 중 오류가 발생했습니다." });
     }

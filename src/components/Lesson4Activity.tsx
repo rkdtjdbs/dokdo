@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { debateQuestions } from '../data';
 import { FileText, Users, Edit3, CheckCircle, RefreshCw, Award, AlertCircle, Heart, Check, Trash2, Printer, Sparkles, Copy, BookOpen } from 'lucide-react';
 import { TextbookActivity, ReflectionAnswer } from '../types';
+import { generateLocalHistoricalEssay } from '../utils/essayGenerator';
 
 interface Lesson4ActivityProps {
   completedKeys: string[];
@@ -53,6 +54,7 @@ export default function Lesson4Activity({ completedKeys, toggleComplete, onActiv
   const [generationError, setGenerationError] = useState<string>('');
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
   const [applyFeedback, setApplyFeedback] = useState<string>('');
+  const [isFallbackMode, setIsFallbackMode] = useState<boolean>(false);
 
   const handleTagClick = (tag: string) => {
     const trimmed = aiKeywords.trim();
@@ -77,6 +79,7 @@ export default function Lesson4Activity({ completedKeys, toggleComplete, onActiv
     setIsGenerating(true);
     setGenerationError('');
     setGeneratedEssay('');
+    setIsFallbackMode(false);
 
     try {
       const response = await fetch('/api/generate-essay', {
@@ -99,10 +102,21 @@ export default function Lesson4Activity({ completedKeys, toggleComplete, onActiv
         throw new Error('응답에 소감문 본문이 비어있습니다.');
       }
     } catch (err: any) {
-      console.error(err);
-      setGenerationError(err.message || '소감문을 생성하는 중 에러가 발생했습니다.');
+      console.warn("API error, triggering local intelligent historical essay library fallback:", err);
+      // Fallback generation
+      setTimeout(() => {
+        const localEssay = generateLocalHistoricalEssay(aiKeywords);
+        setGeneratedEssay(localEssay);
+        setIsFallbackMode(true);
+        setIsGenerating(false);
+      }, 1000); // 1s realistic visual typing build load
     } finally {
-      setIsGenerating(false);
+      setTimeout(() => {
+        setIsGenerating(prev => {
+          if (prev && !isFallbackMode) return false;
+          return prev;
+        });
+      }, 100);
     }
   };
 
@@ -450,6 +464,13 @@ export default function Lesson4Activity({ completedKeys, toggleComplete, onActiv
                     <BookOpen className="w-4 h-4 shrink-0" />
                     <span>생성된 평화 소감문 성안 초고</span>
                   </h4>
+
+                  {isFallbackMode && (
+                    <div className="p-3.5 bg-neutral-900/60 border border-editorial-accent/20 rounded text-neutral-300 text-[10px] leading-relaxed flex items-center gap-2 mb-4">
+                      <Sparkles className="w-4 h-4 text-editorial-accent shrink-0 animate-pulse" />
+                      <span>💡 <strong>로컬 지능 고증 성찰 엔진이 활성화되었습니다.</strong> 현 환경에서 라이브 Gemini Server 연결이 원활하지 않아 사전에 튜닝된 지능형 템플릿 엔진으로 소감문을 작성 완료했습니다. 실시간 AI 작성을 원하시면 우측 <strong>Settings &gt; Secrets</strong>에서 api-key를 체크바랍니다.</span>
+                    </div>
+                  )}
                   
                   {/* Parchment scroll style content */}
                   <div className="text-xs text-neutral-300 font-serif font-normal space-y-3.5 whitespace-pre-wrap select-text selection:bg-editorial-accent selection:text-black leading-relaxed">
